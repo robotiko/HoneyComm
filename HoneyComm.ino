@@ -143,16 +143,11 @@ void loop() {
           rssi = rssiStatusByte / 2 - RSSI_OFFSET;
         }
 
+       Serial.print(F("RSSI[dBm]="));
+       Serial.println(rssi, DEC);
 
-        // TODO: Remove
-        // Limit to strong messages
-        if (rssi > -50) {
-          Serial.print(F("RSSI[dBm]="));
-          Serial.println(rssi, DEC);
-
-          //bitstream.show(inputBuffer, len);
-          processBitstream(len);
-        }
+       //bitstream.show(inputBuffer, len);
+       processBitstream(len);
 
       } // End if length > 0
 
