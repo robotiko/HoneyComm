@@ -369,12 +369,39 @@ void processHeatDemandTiming(byte *buffer, byte len) {
  * 0x2309 HR80
  * 0x30C9 Relais module R6660D 
  *
+ * Possible outputs:
+ * 32B44A  Bind Request#B6 zone 1 and device 239 for source device 32B44A / zone 1 and device 30C9 for source device 32B44A 
+ * 32B44A  Bind Request#B6 zone 1 and device 239 for source device 32B44A / zone 1 and device 30C9 for source device 32B44A 
+ * 32B44A  Bind Request#B6 zone 1 and device 239 for source device 32B44A / zone 1 and device 30C9 for source device 32B44A 
+ *
+ * 32B44A  Bind Request#B7 zone 1 and device 239 for source device 32B44A / zone 1 and device 30C9 for source device 32B44A 
+ * 32B44A  Bind Request#B7 zone 1 and device 239 for source device 32B44A / zone 1 and device 30C9 for source device 32B44A 
+ * 32B44A  Bind Request#B7 zone 1 and device 239 for source device 32B44A / zone 1 and device 30C9 for source device 32B44A 
+ *
+ * 32B44A  Bind Request#8D zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#8D zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#8D zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#8E zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#8E zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#8E zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#8F zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#8F zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#8F zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#90 zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#90 zone 2 and device 239 for source device 32B44A 
+ * 32B44A  Bind Request#90 zone 2 and device 239 for source device 32B44A 
+ *
  */
 void processBindCommand(byte *buffer, byte len) {
-  printDeviceAddress(buffer + 1, 3); // Always FF FF FF ???
+  printDeviceAddress(buffer + 1, 3); // Device address of the sending device
 
-  Serial.print(F(" Bind Request#"));
+  // Incremented each time the binding signal is triggered by the user by pressing
+  // a button combination on the device.
+  Serial.print(F(" Bind Request#")); 
   Serial.print(buffer[4], HEX);
+  
+  // byte[5:6] = 0x1FC9 for "bind" command
+  
   Serial.print(F(" zone "));
   Serial.print(buffer[8], HEX);
   Serial.print(F(" and device "));
