@@ -326,6 +326,24 @@ void printDeviceAddress(byte *buffer, byte len) {
   Serial.print(F(" "));
 }  
 
+/**
+ * Command 0x2309 "Zone Setpoint Setting"
+ * Sender: HR80
+ *
+ * With this message, the HR80 radiator controller broadcasts to which zone it belongs,
+ * and what is the current setpoint setting for this zone.
+ * Bytes 0-2 of the device address is the unique device address of the HR80.
+ * Bytes 3-5 of the device address is the unique device address of the controller to which the HR80 is bound (and got its zone assignment) from.
+ *
+ * Possible outputs:
+ * 00A20132B44A  Zone Setpoint Setting Z=1  T=17.00
+ * 00A20132B44A  Zone Setpoint Setting Z=1  T=21.00
+ *
+ * Device address of the HR80: 00A201
+ * Device address of the controller the HR80 is bound to: 32B44A
+ * The setpoint for zone 1 (to which this HR80 is belonging to) changed from 17.00 to 21.00 degrees celsius.
+ *
+ */
 void processZoneSetpointSettingCommand(byte *buffer, byte len) {
   printDeviceAddress(buffer + 1, 6);
 
@@ -338,6 +356,23 @@ void processZoneSetpointSettingCommand(byte *buffer, byte len) {
   Serial.println(temperature, 2);
 }
 
+/**
+ * Command: 0x30C9 "Zone Temperature Distribution"
+ * Sender: HR80
+ *
+ * With this message, the HR80 radiator controller broadcasts the actual temperature value.
+ * The zone information always seems to be Z=0.
+ *
+ * Bytes 0-2 of the device address is the unique device address of the HR80.
+ * Bytes 3-5 of the device address repeat the device address of the HR80.
+ *
+ * Possible outputs:
+ * 00A20100A201  Zone Temperature Distribution Z=0  T=20.57
+ *
+ * Device address of the HR80: 00A201
+ * The actual temperature value is 20.57 degrees celsius.
+ *
+ */
 void processZoneTemperatureDistribution(byte *buffer, byte len) {
   printDeviceAddress(buffer + 1, 6);
 
@@ -364,6 +399,7 @@ void processHeatDemandTiming(byte *buffer, byte len) {
 
 /**
  * Command 0x1FC9 "Bind"
+ * Sender: Controlling device
  *
  * Device Types:
  * 0x2309 HR80
