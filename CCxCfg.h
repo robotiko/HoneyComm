@@ -24,7 +24,7 @@
 #include "CCx.h"
 #include <avr/pgmspace.h>
 
-#define MAX_PACKET_LENGTH 0x40
+#define MAX_PACKET_LENGTH 0xFF
 #define CCX_NR_OF_REGISTERS 31
 
 // list the registers in the same order as CCxRegisterSettings
@@ -71,26 +71,15 @@ static const byte CCx_registers[CCX_NR_OF_REGISTERS] PROGMEM = {
 static const byte CCx_registerSettings[CCX_NR_OF_CONFIGS][CCX_NR_OF_REGISTERS] PROGMEM = {
 
       {
-            0x2E,   // IOCFG2: GDO2 - High impedance (3-state).
-            0x06,   // IOCFG0: GDO0 - Asserts when sync word has been received, and de-asserts at the end of the packet. In RX, the pin will also de- assert when a packet is discarded due to address or maximum length filtering or when the radio enters RXFIFO_OVERFLOW state.
-            0x00,   // FIFOTHR: RX FIFO threshold at 4 Bytes
-
-            // Preamble of each message is as follows.
-            // Note that after the 4x 01010101 there is also a start bit [0] and
-            // a stop bit [1] for each byte.
-            //
-            // 01010101 01010101 01010101 01010101
-            // [0]11111111[1] [0]00000000[1] [0]11001100[1] [0]10101010[1] [0]11001010[1]
-            //
-            // We instruct the CC1101 to sync on the following 16 bits,
-            // starting at bit position 8x4 + 4 = 36
-            // 11111[1][0]0 0000000[1]
-
-            0xFC,   // SYNC1: Syncword 11111[1][0]0
-            0x01,   // SYNC0: Syncword 0000000[1]
+            0x0B,   // IOCFG2: GDO2 - Serial Clock. Synchronous to the data in synchronous serial mode.
+                    // In RX mode, data is set up on the falling edge by CC1101 when GDOx_INV=0.
+            0x0C,   // IOCFG0: Serial Synchronous Data Output. Used for synchronous serial mode.
+            0x07,   // FIFOTHR
+            0x00,   // SYNC1: 
+            0x00,   // SYNC0: 
             MAX_PACKET_LENGTH,   // PKTLEN:
             0x00,   // PKTCTRL1: Do not append status (RSSI and LQI)
-            0x00,   // PKTCTRL0: Fixed packet length (see PKTLEN)
+            0x12,   // PKTCTRL0: Synchronous serial mode,
             0x06,   // FSCTRL1   Frequency synthesizer control.
             0x00,   // FSCTRL0   Frequency synthesizer control.
             0x21,   // FREQ2     Frequency control word, high byte.
@@ -98,7 +87,7 @@ static const byte CCx_registerSettings[CCX_NR_OF_CONFIGS][CCX_NR_OF_REGISTERS] P
             0xCC,   // FREQ0     Frequency control word, low byte.
             0x6A,   // MDMCFG4: Data rate = 38,38 kBaud with 26.0 MHz crystal
             0x83,   // MDMCFG3: Data rate = 38,38 kBaud with 26.0 MHz crystal
-            0x16,   // MDMCFG2: 2-FSK, 15/16 + carrier-sense above threshold
+            0x10,   // MDMCFG2: 2-FSK
             0x02,   // MDMCFG1   Modem configuration.
             0xF8,   // MDMCFG0   Modem configuration.
             0x50,   // DEVIATN   Modem deviation setting (when FSK modulation is enabled).

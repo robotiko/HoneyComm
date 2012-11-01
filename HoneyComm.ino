@@ -31,32 +31,38 @@
 
 #define RSSI_OFFSET 74
 
-#define PD2 2
-#define PD3 3
+#define PD2 2 // Wired with GDO0 on CC1101
+#define SERIAL_DATA PD2
+#define PD3 3 // Wired with GDO2 on CC1101
+#define SERIAL_CLK PD3
 
-volatile byte gdo0;
 
-volatile byte packetReceiveState = PRS_INITIAL;
+// TODO: Remove
+byte inputBuffer[0]; // Has to correspond to CC1101 PKTLEN Parameter
+byte outputBuffer[0]; // Has to correspond to CC1101 PKTLEN Parameter
 
-volatile int cnt;
 
-byte inputBuffer[MAX_PACKET_LENGTH]; // Has to correspond to CC1101 PKTLEN Parameter
-byte outputBuffer[MAX_PACKET_LENGTH]; // Has to correspond to CC1101 PKTLEN Parameter
+#define BUFFER_SIZE 100
+byte buffer[BUFFER_SIZE];
 
 void setup() {
 
   delay(500);
 
-  Serial.begin(38400);
-
   CCx.PowerOnStartUp();
   setCCxConfig();
 
-  Serial.println(F("HoneyComm - Copyright (C) 2011 Wladimir Komarow"));
-  Serial.println(F("This program comes with ABSOLUTELY NO WARRANTY."));
-  Serial.println(F("This is free software, and you are welcome to redistribute it under certain conditions; "));
-  Serial.println(F("For details see http://www.gnu.org/licenses/gpl-3.0-standalone.html"));
+  Serial.begin(115200);
+
+  Serial.println(F("-- HoneyComm - Copyright (C) 2011 Wladimir Komarow"));
+  Serial.println(F("-- This program comes with ABSOLUTELY NO WARRANTY."));
+  Serial.println(F("-- This is free software, and you are welcome to redistribute it under certain conditions; "));
+  Serial.println(F("-- For details see http://www.gnu.org/licenses/gpl-3.0-standalone.html"));
+  Serial.println(F("-- THIS DOES NOT WORK PROPERLY YET"));
   delay(500);
+
+  pinMode(PD5, OUTPUT); 
+  pinMode(PD6, OUTPUT);
 }
 
 
@@ -65,97 +71,116 @@ void setup() {
 //
 void loop() {
 
-  switch (packetReceiveState) {
-  case PRS_INITIAL:
-    {
-      // Check RX state
-      byte tmp;
-      byte chipStatusByte = CCx.Read(CCx_SNOP, &tmp);
+  byte value = 0;
+  byte cnt = 0;
 
-      if ((chipStatusByte & 0x70) > 0) {
-        CCx.Strobe(CCx_SIDLE); // Exit RX / TX, turn off frequency synthesizer and exit Wake-On-Radio mode if applicable.
-        delay(100);
+  while(true) {
+
+    // Receive the bit stream and look for 4-byte sync word
+    syncSearch(0x55, 0x57, 0xfc, 0x01);
+
+    // Now start to read the message from the bitstream.
+    cnt = 0;
+    do {
+      value = receive();
+      buffer[cnt++] = value;
+
+    } 
+    while (value != 0x35 && cnt < BUFFER_SIZE); // Marker for the end of the message, manchester-breaking.
+
+    if (buffer[0] != 0x33 && buffer[1] != 0x55 && buffer[2] != 0x53) { 
+      for (int i=0 ; i<3 ; i++) {
+        Serial.print(buffer[i], HEX);
       }
-
-      packetReceiveState = PRS_PREPARE_RECEIVE;
-      break;
+      Serial.println();
+    } else {
+      for (int i=3 ; i<(cnt-1) ; i+=2) {
+        manchesterByteStream.decodeByte(buffer+i, &value);
+        Serial.print(value, HEX);
+      }
+      Serial.println();
     }
-
-  case PRS_PREPARE_RECEIVE:
-    {
-      CCx.Strobe(CCx_SFRX); // Flush the RX FIFO buffer. Only issue SFRX in IDLE or RXFIFO_OVERFLOW states.
-      CCx.Strobe(CCx_SRX); // Enable RX. Perform calibration first if coming from IDLE and MCSM0.FS_AUTOCAL=1.
-
-      packetReceiveState = PRS_RECEIVING_PACKET;
-
-      break;
-    }
-
-  case PRS_RECEIVING_PACKET:
-    {
-      // Loop until we are in RX state (receive mode)
-      cnt = 10000;
-      byte status;
-      do {
-        status = CCx.Strobe(CCx_SNOP) & 0xF0;
-        cnt--;
-      }
-      while (status != 0x10 && cnt>0);
-
-      if (cnt <= 0) {
-        packetReceiveState = PRS_PREPARE_RECEIVE;
-        break;
-      }
-
-      // Loop until GDO0 goes high
-      do { 
-        gdo0 = digitalRead(PD2);
-      }
-      while (gdo0 == LOW);
-
-      // Loop until GDO0 goes low
-      cnt = 10000;
-      do {
-        gdo0 = digitalRead(PD2);
-        cnt--;
-      }
-      while ((gdo0 == HIGH) && (cnt > 0));
-
-      // Read number of bytes available in RX FIFO
-      byte valueRxBytes;
-      CCx.ReadBurst(CCx_RXBYTES, &valueRxBytes, 1);
-
-      byte len = (valueRxBytes & 0x7F);
-
-      // Read the available bytes
-      if (len > 0) {
-        CCx.ReadBurst(CCx_RXFIFO, inputBuffer, len);
-
-        // Read RSSI status byte
-        byte rssiStatusByte;
-        CCx.ReadBurst(CCx_RSSI, &rssiStatusByte, 1);
-
-        int rssi = 0;
-        if ((rssiStatusByte & 0x80) > 0x00) {
-          rssi = (rssiStatusByte - 256) / 2 - RSSI_OFFSET;
-        }
-        else {
-          rssi = rssiStatusByte / 2 - RSSI_OFFSET;
-        }
-
-       Serial.print(F("RSSI[dBm]="));
-       Serial.println(rssi, DEC);
-
-       //bitstream.show(inputBuffer, len);
-       processBitstream(len);
-
-      } // End if length > 0
-
-      packetReceiveState = PRS_PREPARE_RECEIVE;
-      break;
-    }
-
   }
+}
+
+void syncSearch(byte sync3, byte sync2, byte sync1, byte sync0) {
+
+  byte sync0Received, sync1Received, sync2Received, sync3Received;
+  byte SyncNOK;
+
+  do {
+    sync3Received = sync3Received << 1;
+
+    if((sync2Received & 0x80) == 0)
+      sync3Received &= 0xFE;
+    else
+      sync3Received |= 0x01;
+
+    sync2Received = sync2Received << 1;
+
+    if((sync1Received & 0x80) == 0)
+      sync2Received &= 0xFE;
+    else
+      sync2Received |= 0x01;
+
+    sync1Received = sync1Received << 1;
+
+    if((sync0Received & 0x80) == 0)
+      sync1Received &= 0xFE;
+    else
+      sync1Received |= 0x01;
+
+    // Wait for raising edge of SERIAL_CLK
+    while (! (PIND & (1<<SERIAL_CLK)));
+
+    sync0Received = sync0Received << 1;
+
+    if (PIND & (1<<SERIAL_DATA)) {
+      sync0Received |= 0x01; 
+    } 
+    else {
+      sync0Received &= 0xFE;
+    }
+
+    // Wait for falling edge of SERIAL_CLK
+    while (PIND & (1<<SERIAL_CLK));
+
+    SyncNOK = (
+    (sync3Received != sync3) || 
+      (sync2Received != sync2) || 
+      (sync1Received != sync1) || 
+      (sync0Received != sync0));
+
+  } 
+  while(SyncNOK);
+}
+
+/**
+ * Receives a byte from the bit stream, 
+ * getting rid of the start- and stop bits.
+ */
+byte receive() {
+
+  byte value = 0;
+
+  for (int bit=-1 ; bit<9 ; bit++) {
+
+    // Wait for raising edge of SERIAL_CLK
+    while (! (PIND & (1<<SERIAL_CLK)));
+
+    // Ignore start- and stop-bit
+    if (bit >= 0 && bit <= 7) {
+
+      if (PIND & (1<<SERIAL_DATA)) {
+        value |= 1<<bit;
+      } 
+    }
+
+    // Wait for falling edge of SERIAL_CLK
+    while (PIND & (1<<SERIAL_CLK));
+  }
+
+  return value;
 }
 
 /**
@@ -174,6 +199,9 @@ void processBitstream(byte len) {
 
   // Remove start- and stop-bits, change bit order
   bitstream.decode(inputBuffer, len, outputBuffer, (byte*) &outputBufferLen);
+
+  bitstream.show(outputBuffer, outputBufferLen);
+  return;
 
   // RF Preamble is 0xFF 0x00 0x33 0x55 0x53
   // We already configured the CC1101 to use 0xFF 0x00 as 16 bit sync word
@@ -435,9 +463,9 @@ void processBindCommand(byte *buffer, byte len) {
   // a button combination on the device.
   Serial.print(F(" Bind Request#")); 
   Serial.print(buffer[4], HEX);
-  
+
   // byte[5:6] = 0x1FC9 for "bind" command
-  
+
   Serial.print(F(" zone "));
   Serial.print(buffer[8], HEX);
   Serial.print(F(" and device "));
@@ -560,6 +588,12 @@ void process1060(byte *buffer, byte len) {
   Serial.print(buffer[12], HEX);
   Serial.println(F(" "));
 }
+
+
+
+
+
+
 
 
 
